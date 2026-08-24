@@ -1,0 +1,32 @@
+{
+  "Categories": [
+    {
+      "Name": "Movies",
+      "Questions": [
+        {
+          "Value": 200,
+          "Prompt": "What year was Back to the Future released?",
+          "Answer": "1985",
+          "IsDailyDouble": false
+        },
+        {
+          "Value": 400,
+          "Prompt": "Who played Luke Skywalker?",
+          "Answer": "Mark Hamill",
+          "IsDailyDouble": true
+        }
+      ]
+    },
+    {
+      "Name": "Gaming",
+      "Questions": [
+        {
+          "Value": 200,
+          "Prompt": "Which yellow character eats dots in a maze?",
+          "Answer": "Pac-Man",
+          "IsDailyDouble": false
+        }
+      ]
+    }
+  ]
+}
