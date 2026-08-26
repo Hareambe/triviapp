@@ -37,6 +37,7 @@ var supabaseClient = app.Services.GetRequiredService<Supabase.Client>();
 await supabaseClient.InitializeAsync();
 
 app.UseCors("AllowFrontend");
+app.UseStaticFiles();
 app.MapControllers();
 
 app.Run();

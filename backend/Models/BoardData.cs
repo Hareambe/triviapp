@@ -17,4 +17,9 @@ public class QuestionData
     public string Prompt { get; set; } = string.Empty; // The clue/question
     public string Answer { get; set; } = string.Empty;  // The answer
     public bool IsDailyDouble { get; set; } = false;
+    public string? QuestionType { get; set; } // "standard", "media", "image"
+    public string? ImageDisplayMode { get; set; } // "gallery", "progressive"
+    public string? MediaUrl { get; set; }
+    public List<string>? MediaUrls { get; set; }
+    public bool IsAudioOnly { get; set; } = false;
 }

@@ -1,8 +1,16 @@
+export type QuestionType = 'standard' | 'media' | 'image';
+export type ImageDisplayMode = 'gallery' | 'progressive';
+
 export interface QuestionData {
   value: number;
   prompt: string;
   answer: string;
   isDailyDouble: boolean;
+  questionType?: QuestionType;
+  imageDisplayMode?: ImageDisplayMode;
+  mediaUrl?: string;
+  mediaUrls?: string[];
+  isAudioOnly?: boolean;
 }
 
 export interface CategoryData {
