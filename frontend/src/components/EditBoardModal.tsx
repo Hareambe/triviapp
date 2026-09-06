@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { BoardResponseDto, BoardData, CategoryData, QuestionType, ImageDisplayMode } from '../types/board';
+import type { BoardResponseDto, BoardData, CategoryData, QuestionType, ImageDisplayMode, ImageRevealStyle } from '../types/board';
 import { updateBoard } from '../services/api';
 import {
   Save,
@@ -63,6 +63,7 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
   const [pointInput, setPointInput] = useState('');
   const [questionTypeInput, setQuestionTypeInput] = useState<QuestionType>('standard');
   const [imageDisplayModeInput, setImageDisplayModeInput] = useState<ImageDisplayMode>('gallery');
+  const [imageRevealStylesInput, setImageRevealStylesInput] = useState<ImageRevealStyle[]>(['blurry']);
   const [mediaUrlsInput, setMediaUrlsInput] = useState<string[]>(['']);
   const [isAudioOnlyInput, setIsAudioOnlyInput] = useState(false);
   const [isDailyDoubleInput, setIsDailyDoubleInput] = useState(false);
@@ -92,6 +93,10 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
     setIsAudioOnlyInput(Boolean(q?.isAudioOnly));
     setIsDailyDoubleInput(Boolean(q?.isDailyDouble));
     setImageDisplayModeInput(q?.imageDisplayMode || 'gallery');
+    
+    const defaultStyle: ImageRevealStyle = q?.imageRevealStyle || 'blurry';
+    const initialStyles: ImageRevealStyle[] = initialUrls.map((_, i) => q?.imageRevealStyles?.[i] || defaultStyle);
+    setImageRevealStylesInput(initialStyles.length > 0 ? initialStyles : ['blurry']);
 
     // Auto-detect question type if not explicitly set
     let determinedType: QuestionType = q?.questionType || 'standard';
@@ -132,6 +137,8 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
             value: finalPointValue,
             questionType: questionTypeInput,
             imageDisplayMode: questionTypeInput === 'image' ? imageDisplayModeInput : undefined,
+            imageRevealStyle: questionTypeInput === 'image' ? (imageRevealStylesInput[0] || 'blurry') : undefined,
+            imageRevealStyles: questionTypeInput === 'image' ? imageRevealStylesInput.slice(0, cleanedMediaUrls.length) : undefined,
             mediaUrl: cleanedMediaUrls[0] || undefined,
             mediaUrls: cleanedMediaUrls.length > 0 ? cleanedMediaUrls : undefined,
             isAudioOnly: questionTypeInput === 'media' ? isAudioOnlyInput : false,
@@ -640,10 +647,13 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
-                            onClick={() => setMediaUrlsInput((prev) => [...prev, ''])}
+                            onClick={() => {
+                              setMediaUrlsInput((prev) => [...prev, '']);
+                              setImageRevealStylesInput((prev) => [...prev, 'blurry']);
+                            }}
                             className="flex items-center gap-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 hover:border-cyan-400 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm"
                             title="Add another image link"
                           >
@@ -655,41 +665,42 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
                             <button
                               type="button"
                               onClick={() => setImageDisplayModeInput('gallery')}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                              className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                                 imageDisplayModeInput === 'gallery'
                                   ? 'bg-cyan-600 text-white shadow-sm'
                                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
                               }`}
                               title="All images are visible together in a gallery grid"
                             >
-                              🖼️ Side-by-Side (All)
+                              🖼️ Side-by-Side
                             </button>
                             <button
                               type="button"
                               onClick={() => setImageDisplayModeInput('progressive')}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                              className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                                 imageDisplayModeInput === 'progressive'
                                   ? 'bg-purple-600 text-white shadow-sm'
                                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
                               }`}
                               title="Images reveal step-by-step as progressive hints"
                             >
-                              🔢 Step-by-Step (Progressive)
+                              🔢 Step-by-Step
                             </button>
                           </div>
                         </div>
                       </div>
 
-                      {/* Image URL Inputs */}
-                      <div className="flex flex-col gap-2 max-h-[170px] overflow-y-auto pr-1">
+                      {/* Image URL Inputs with Per-Image Visibility Controls */}
+                      <div className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1">
                         {mediaUrlsInput.map((url, idx) => {
                           const isDriveImg = Boolean(extractGoogleDriveFileId(url));
                           const isImg = isImageUrl(url) || (url.trim().startsWith('http') && !extractYouTubeInfo(url));
                           const directImgUrl = isImg ? getDirectImageUrl(url) : '';
+                          const currentStyle = imageRevealStylesInput[idx] || 'blurry';
 
                           return (
-                            <div key={idx} className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-xl border border-blue-900/40">
-                              <span className="text-xs font-bold text-slate-400 w-14 shrink-0">
+                            <div key={idx} className="flex items-center gap-2 bg-slate-900/70 p-2 rounded-xl border border-blue-900/40 flex-wrap sm:flex-nowrap">
+                              <span className="text-xs font-bold text-slate-400 w-16 shrink-0">
                                 Image #{idx + 1}
                               </span>
 
@@ -717,31 +728,84 @@ export const EditBoardModal: React.FC<EditBoardModalProps> = ({
                                     prev.map((item, i) => (i === idx ? val : item))
                                   );
                                 }}
-                                placeholder="Paste any image URL, Google Drive link, Imgur, Pinterest, Unsplash, etc..."
-                                className="flex-1 bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                                placeholder="Paste any image URL, Google Drive link, Imgur, etc..."
+                                className="flex-1 min-w-[160px] bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                               />
+
+                              {/* Per-Image Reveal Style Selector */}
+                              <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 gap-0.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setImageRevealStylesInput((prev) => {
+                                      const copy = [...prev];
+                                      copy[idx] = 'blurry';
+                                      return copy;
+                                    })
+                                  }
+                                  className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                    currentStyle === 'blurry'
+                                      ? 'bg-cyan-600 text-white shadow-sm'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                  }`}
+                                  title="Frosted blur filter until clicked to unblur"
+                                >
+                                  🌫️ Blurry
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setImageRevealStylesInput((prev) => {
+                                      const copy = [...prev];
+                                      copy[idx] = 'hidden';
+                                      return copy;
+                                    })
+                                  }
+                                  className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                    currentStyle === 'hidden'
+                                      ? 'bg-slate-800 text-white ring-1 ring-slate-600 shadow-sm'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                  }`}
+                                  title="100% pitch black solid cover until clicked"
+                                >
+                                  ⬛ Hidden
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setImageRevealStylesInput((prev) => {
+                                      const copy = [...prev];
+                                      copy[idx] = 'open';
+                                      return copy;
+                                    })
+                                  }
+                                  className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                    currentStyle === 'open'
+                                      ? 'bg-emerald-600 text-white shadow-sm'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                  }`}
+                                  title="Open and immediately visible"
+                                >
+                                  👁️ Open
+                                </button>
+                              </div>
 
                               {/* Detection Badges */}
                               {isDriveImg && (
-                                <span className="text-[10px] font-bold text-blue-300 bg-blue-950/80 border border-blue-800 px-2 py-1 rounded-md shrink-0 flex items-center gap-1">
-                                  <ImageIcon className="w-3 h-3 text-blue-400" /> Google Drive
-                                </span>
-                              )}
-
-                              {!isDriveImg && url.trim().length > 0 && isImg && (
-                                <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/80 border border-cyan-800 px-2 py-1 rounded-md shrink-0 flex items-center gap-1">
-                                  <ImageIcon className="w-3 h-3 text-cyan-400" /> Image Link
+                                <span className="text-[10px] font-bold text-blue-300 bg-blue-950/80 border border-blue-800 px-2 py-1 rounded-md shrink-0 hidden sm:flex items-center gap-1">
+                                  <ImageIcon className="w-3 h-3 text-blue-400" /> Drive
                                 </span>
                               )}
 
                               {mediaUrlsInput.length > 1 && (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    setMediaUrlsInput((prev) => prev.filter((_, i) => i !== idx))
-                                  }
+                                  onClick={() => {
+                                    setMediaUrlsInput((prev) => prev.filter((_, i) => i !== idx));
+                                    setImageRevealStylesInput((prev) => prev.filter((_, i) => i !== idx));
+                                  }}
                                   className="p-1.5 text-slate-400 hover:text-rose-400 bg-slate-950 hover:bg-rose-950/40 rounded-lg border border-slate-800 transition-colors cursor-pointer shrink-0"
-                                  title="Delete image link"
+                                  title="Remove image"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>

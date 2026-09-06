@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import type { BoardResponseDto, BoardData } from '../types/board';
 import { deleteBoard } from '../services/api';
 import { UploadBoardModal } from './UploadBoardModal';
+import { CreateBoardModal } from './CreateBoardModal';
+import { EditBoardModal } from './EditBoardModal';
 import {
   Search,
   Upload,
@@ -12,6 +14,8 @@ import {
   HelpCircle,
   X,
   Trash2,
+  Plus,
+  Pencil,
 } from 'lucide-react';
 
 interface BoardSelectorProps {
@@ -32,6 +36,8 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [previewBoard, setPreviewBoard] = useState<BoardResponseDto | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingBoard, setEditingBoard] = useState<BoardResponseDto | null>(null);
 
   const parseBoardData = (dataJson: string): BoardData => {
     try {
@@ -108,13 +114,23 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsUploadModalOpen(true)}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all cursor-pointer hover:scale-105"
-        >
-          <Upload className="w-4 h-4" /> Upload Custom Board
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white px-4 py-2 rounded-xl text-sm font-black shadow-lg shadow-emerald-950/40 transition-all cursor-pointer hover:scale-105"
+          >
+            <Plus className="w-4 h-4" /> Create from Scratch
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-xl text-sm font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <Upload className="w-4 h-4" /> Upload JSON
+          </button>
+        </div>
       </div>
 
       {/* Boards Grid */}
@@ -125,15 +141,24 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
           </div>
           <h3 className="text-lg font-bold text-slate-200">No boards match your search</h3>
           <p className="text-sm text-slate-400 max-w-sm mx-auto">
-            Try searching for a different keyword or upload a new custom board.
+            Try searching for a different keyword, create a new board, or upload a JSON board.
           </p>
-          <button
-            type="button"
-            onClick={() => setIsUploadModalOpen(true)}
-            className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 px-5 py-2.5 rounded-xl font-bold text-sm"
-          >
-            <Upload className="w-4 h-4" /> Upload Board Now
-          </button>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-2.5 rounded-xl font-black text-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Create Board from Scratch
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsUploadModalOpen(true)}
+              className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm cursor-pointer"
+            >
+              <Upload className="w-4 h-4" /> Upload JSON Board
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -214,6 +239,18 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setEditingBoard(board);
+                      }}
+                      className="flex items-center gap-1 text-xs font-semibold text-cyan-300 hover:text-white bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/80 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer shadow-sm"
+                      title="Edit Board Categories & Questions"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setPreviewBoard(board);
                       }}
                       className="flex items-center gap-1 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
@@ -250,6 +287,35 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
           <ArrowRight className="w-6 h-6" />
         </button>
       </div>
+
+      {/* Create Board from Scratch Modal */}
+      {isCreateModalOpen && (
+        <CreateBoardModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onBoardCreated={async (newBoard, openEditor) => {
+            onSelectBoard(newBoard);
+            await onRefreshBoards();
+            if (openEditor) {
+              setEditingBoard(newBoard);
+            }
+          }}
+        />
+      )}
+
+      {/* Edit Board Modal */}
+      {editingBoard && (
+        <EditBoardModal
+          isOpen={Boolean(editingBoard)}
+          board={editingBoard}
+          onClose={() => setEditingBoard(null)}
+          onBoardUpdated={async (updated) => {
+            onSelectBoard(updated);
+            setEditingBoard(null);
+            await onRefreshBoards();
+          }}
+        />
+      )}
 
       {/* Upload Custom Board Modal */}
       {isUploadModalOpen && (

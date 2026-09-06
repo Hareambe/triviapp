@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { BoardResponseDto, BoardData, QuestionData, Team } from '../types/board';
+import type { BoardResponseDto, BoardData, QuestionData, Team, ImageRevealStyle } from '../types/board';
 import {
   CheckCircle,
   Plus,
@@ -95,15 +95,30 @@ export const BoardView: React.FC<BoardViewProps> = ({
     notifyTeamsChange(updated);
   };
 
-  const [completedQuestions, setCompletedQuestions] = useState<Record<string, boolean>>({});
+  const [questionStartScores, setQuestionStartScores] = useState<Record<string, number>>({});
+  const [completedQuestions, setCompletedQuestions] = useState<
+    Record<string, { completed: boolean; teamIds: string[] }>
+  >({});
 
   const markCompleted = (key: string) => {
-    setCompletedQuestions((prev) => ({ ...prev, [key]: true }));
+    // Determine which teams gained points during this question
+    const deltas = teams.map((team) => ({
+      teamId: team.id,
+      delta: team.score - (questionStartScores[team.id] ?? team.score),
+    }));
+    const positiveDeltas = deltas.filter((d) => d.delta > 0);
+    const winnerTeamIds = positiveDeltas.map((d) => d.teamId);
+
+    setCompletedQuestions((prev) => ({
+      ...prev,
+      [key]: { completed: true, teamIds: winnerTeamIds },
+    }));
     setActiveQuestion(null);
     setShowAnswer(false);
     setZoomedImageUrl(null);
     setUnblurredUrls({});
     setProgressiveImgIndex(0);
+    setQuestionStartScores({});
   };
 
   const closeQuestionModal = (markAsDone: boolean = true) => {
@@ -115,6 +130,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
       setZoomedImageUrl(null);
       setUnblurredUrls({});
       setProgressiveImgIndex(0);
+      setQuestionStartScores({});
     }
   };
 
@@ -263,14 +279,53 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 };
 
                 const cardKey = `${catIdx}-${rowIdx}`;
-                const isDone = completedQuestions[cardKey];
+                const completion = completedQuestions[cardKey];
+                const isDone = Boolean(completion?.completed);
+                const claimedTeamIds = completion?.teamIds || [];
+                const claimingTeams = claimedTeamIds
+                  .map((id) => teams.find((t) => t.id === id))
+                  .filter(Boolean) as Team[];
+
+                const COLOR_HEX_MAP: Record<string, string> = {
+                  Amber: '#f59e0b',
+                  Sky: '#0ea5e9',
+                  Emerald: '#10b981',
+                  Rose: '#f43f5e',
+                  Purple: '#a855f7',
+                  Orange: '#f97316',
+                  Cyan: '#06b6d4',
+                  Fuchsia: '#d946ef',
+                };
+
+                const teamColorObjs = claimingTeams.map((team, idx) => {
+                  const tIdx = teams.findIndex((t) => t.id === team.id);
+                  const colorObj =
+                    TEAM_COLORS.find((c) => c.name === team.color) ||
+                    TEAM_COLORS[tIdx % TEAM_COLORS.length] ||
+                    TEAM_COLORS[idx % TEAM_COLORS.length];
+                  const hex = COLOR_HEX_MAP[team.color || colorObj.name] || '#3b82f6';
+                  return { team, colorObj, hex };
+                });
+
+                // Dynamic multi-color gradient style when 2 or more teams get points
+                const dynamicTileStyle: React.CSSProperties = {};
+                if (isDone && teamColorObjs.length >= 2) {
+                  const gradientStops = teamColorObjs.map((tc) => `${tc.hex}40`).join(', ');
+                  dynamicTileStyle.background = `linear-gradient(135deg, ${gradientStops})`;
+                  dynamicTileStyle.borderColor = teamColorObjs[0].hex;
+                }
 
                 return (
                   <div
                     key={cardKey}
+                    style={dynamicTileStyle}
                     className={`rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[90px] sm:min-h-[100px] p-2 text-center select-none shadow-lg ${
                       isDone
-                        ? 'bg-slate-900 border-slate-800 opacity-40 cursor-not-allowed'
+                        ? teamColorObjs.length === 1
+                          ? `${teamColorObjs[0].colorObj.bg} ${teamColorObjs[0].colorObj.border} ring-1 ring-inset ring-white/10 opacity-95 cursor-not-allowed animate-in zoom-in-95 duration-300`
+                          : teamColorObjs.length >= 2
+                          ? 'ring-2 ring-white/20 opacity-95 cursor-not-allowed animate-in zoom-in-95 duration-300'
+                          : 'bg-slate-900 border-slate-800 opacity-40 cursor-not-allowed'
                         : 'bg-blue-950 border-blue-800 hover:border-yellow-400 hover:scale-[1.02] cursor-pointer'
                     }`}
                     onClick={() => {
@@ -278,12 +333,40 @@ export const BoardView: React.FC<BoardViewProps> = ({
                         setActiveClipIndex(0);
                         setUnblurredUrls({});
                         setProgressiveImgIndex(0);
+                        const startScores: Record<string, number> = {};
+                        teams.forEach((t) => {
+                          startScores[t.id] = t.score;
+                        });
+                        setQuestionStartScores(startScores);
                         setActiveQuestion({ catIndex: catIdx, qIndex: rowIdx, data: question });
                       }
                     }}
                   >
                     {isDone ? (
-                      <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-slate-600" />
+                      teamColorObjs.length === 1 ? (
+                        /* Single Team Winner (Team Color + Name Only) */
+                        <div className="flex flex-col items-center justify-center p-1 w-full animate-in fade-in duration-200">
+                          <span
+                            className={`text-xs sm:text-sm md:text-base px-2.5 py-1 rounded-lg font-black tracking-wide truncate max-w-[120px] sm:max-w-[140px] shadow-md ${teamColorObjs[0].colorObj.badge}`}
+                          >
+                            {teamColorObjs[0].team.name}
+                          </span>
+                        </div>
+                      ) : teamColorObjs.length >= 2 ? (
+                        /* Multiple Teams Winner (Shared Colors + Names Only) */
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 p-1 w-full animate-in fade-in duration-200">
+                          {teamColorObjs.map(({ team, colorObj }) => (
+                            <span
+                              key={team.id}
+                              className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-md font-black tracking-tight truncate max-w-[65px] sm:max-w-[80px] shadow-md ${colorObj.badge}`}
+                            >
+                              {team.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-slate-600" />
+                      )
                     ) : (
                       <span className="text-2xl sm:text-3xl font-extrabold text-yellow-400 tracking-wider">
                         ${question.value}
@@ -429,63 +512,96 @@ export const BoardView: React.FC<BoardViewProps> = ({
 
                   {/* Progressive Single Image or Side-by-Side Gallery */}
                   {activeQuestion.data.imageDisplayMode === 'progressive' ? (
-                    /* Single Progressive Image with On-Image Blur Filter */
+                    /* Single Progressive Image */
                     (() => {
                       const url = imageUrls[progressiveImgIndex];
+                      const revealStyle: ImageRevealStyle =
+                        activeQuestion.data.imageRevealStyles?.[progressiveImgIndex] ||
+                        activeQuestion.data.imageRevealStyle ||
+                        'blurry';
                       const isUnblurred = Boolean(unblurredUrls[url]);
+                      const isRevealed = revealStyle === 'open' || isUnblurred;
 
                       return (
                         <div className="flex flex-col items-center gap-2 w-full max-w-3xl">
                           <div
                             onClick={() => {
-                              if (!isUnblurred) {
+                              if (!isRevealed) {
                                 setUnblurredUrls((prev) => ({ ...prev, [url]: true }));
                               } else {
                                 setZoomedImageUrl(url);
                               }
                             }}
                             className={`relative group rounded-2xl overflow-hidden border-2 shadow-2xl bg-black min-h-[240px] sm:min-h-[280px] max-h-[46vh] flex items-center justify-center transition-all cursor-pointer select-none ${
-                              isUnblurred
+                              isRevealed
                                 ? 'border-purple-500/80 hover:border-yellow-400 hover:scale-[1.01]'
+                                : revealStyle === 'hidden'
+                                ? 'border-dashed border-slate-700 hover:border-cyan-400 bg-black'
                                 : 'border-cyan-500/80 hover:border-cyan-400'
                             }`}
                           >
-                            <img
-                              src={url}
-                              alt={`Progressive Clue #${progressiveImgIndex + 1}`}
-                              referrerPolicy="no-referrer"
-                              className={`max-h-[46vh] w-auto max-w-full object-contain rounded-2xl transition-all duration-700 ease-out ${
-                                isUnblurred
-                                  ? 'filter-none scale-100'
-                                  : 'filter blur-2xl brightness-75 scale-105'
-                              }`}
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                if (target.src.includes('drive.google.com/thumbnail')) {
-                                  const idMatch = target.src.match(/id=([a-zA-Z0-9_-]+)/);
-                                  if (idMatch) target.src = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
-                                }
-                              }}
-                            />
-
-                            {/* Filter Overlay / Click to Unblur Badge */}
-                            {!isUnblurred ? (
-                              <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center group-hover:bg-slate-950/30 transition-colors">
-                                <div className="bg-cyan-600/90 text-white px-5 py-2.5 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center gap-2 shadow-2xl border border-cyan-400 group-hover:scale-105 transition-transform animate-pulse">
-                                  <Eye className="w-4 h-4" /> Click Image to Reveal
+                            {/* 1. Hidden (Pitch Black) Solid Cover */}
+                            {revealStyle === 'hidden' && !isRevealed ? (
+                              <div className="flex flex-col items-center justify-center p-8 text-center space-y-3 bg-black w-full h-full">
+                                <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 shadow-inner group-hover:scale-110 transition-transform">
+                                  <Eye className="w-7 h-7 animate-pulse text-cyan-300" />
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="text-base font-black text-slate-100 uppercase tracking-wider">
+                                    Visual Clue #{progressiveImgIndex + 1}
+                                  </div>
+                                  <p className="text-xs font-semibold text-slate-500">
+                                    Hidden behind black cover
+                                  </p>
+                                </div>
+                                <div className="bg-cyan-600 group-hover:bg-cyan-500 text-white px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg border border-cyan-400">
+                                  <Eye className="w-4 h-4" /> Click to Reveal
                                 </div>
                               </div>
                             ) : (
-                              <div className="absolute bottom-2 right-2 bg-slate-950/80 backdrop-blur-sm text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                                <Maximize2 className="w-3.5 h-3.5 text-yellow-400" /> Click to Zoom
-                              </div>
+                              /* 2. Blurry or Open Revealed Image */
+                              <>
+                                <img
+                                  src={url}
+                                  alt={`Progressive Clue #${progressiveImgIndex + 1}`}
+                                  referrerPolicy="no-referrer"
+                                  className={`max-h-[46vh] w-auto max-w-full object-contain rounded-2xl transition-all duration-700 ease-out ${
+                                    isRevealed
+                                      ? 'filter-none scale-100'
+                                      : 'filter blur-2xl brightness-75 scale-105'
+                                  }`}
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    if (target.src.includes('drive.google.com/thumbnail')) {
+                                      const idMatch = target.src.match(/id=([a-zA-Z0-9_-]+)/);
+                                      if (idMatch) target.src = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+                                    }
+                                  }}
+                                />
+
+                                {/* Frosted Filter Overlay for Blurry Mode */}
+                                {revealStyle === 'blurry' && !isRevealed && (
+                                  <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center group-hover:bg-slate-950/30 transition-colors">
+                                    <div className="bg-cyan-600/90 text-white px-5 py-2.5 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center gap-2 shadow-2xl border border-cyan-400 group-hover:scale-105 transition-transform animate-pulse">
+                                      <Eye className="w-4 h-4" /> Click Image to Reveal
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Zoom Tooltip on Hover when Revealed */}
+                                {isRevealed && (
+                                  <div className="absolute bottom-2 right-2 bg-slate-950/80 backdrop-blur-sm text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                    <Maximize2 className="w-3.5 h-3.5 text-yellow-400" /> Click to Zoom
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
                       );
                     })()
                   ) : (
-                    /* Side-by-Side Gallery Grid with On-Image Blur Filters */
+                    /* Side-by-Side Gallery Grid */
                     <div
                       className={`grid gap-3.5 w-full mx-auto ${
                         imageUrls.length === 1
@@ -498,66 +614,99 @@ export const BoardView: React.FC<BoardViewProps> = ({
                       }`}
                     >
                       {imageUrls.map((url, imgIdx) => {
+                        const revealStyle: ImageRevealStyle =
+                          activeQuestion.data.imageRevealStyles?.[imgIdx] ||
+                          activeQuestion.data.imageRevealStyle ||
+                          'blurry';
                         const isUnblurred = Boolean(unblurredUrls[url]);
+                        const isRevealed = revealStyle === 'open' || isUnblurred;
 
-                        return (
-                          <div
-                            key={imgIdx}
-                            onClick={() => {
-                              if (!isUnblurred) {
-                                setUnblurredUrls((prev) => ({ ...prev, [url]: true }));
-                              } else {
-                                setZoomedImageUrl(url);
-                              }
-                            }}
-                            className={`relative group rounded-2xl overflow-hidden border-2 shadow-2xl bg-black min-h-[200px] sm:min-h-[240px] max-h-[44vh] flex items-center justify-center transition-all cursor-pointer select-none ${
-                              isUnblurred
-                                ? 'border-cyan-500/70 hover:border-yellow-400 hover:scale-[1.02]'
-                                : 'border-cyan-500/50 hover:border-cyan-400'
-                            }`}
-                          >
-                            <img
-                              src={url}
-                              alt={`Clue #${imgIdx + 1}`}
-                              referrerPolicy="no-referrer"
-                              className={`max-h-[44vh] w-auto max-w-full object-contain rounded-2xl transition-all duration-700 ease-out ${
-                                isUnblurred
-                                  ? 'filter-none scale-100'
-                                  : 'filter blur-2xl brightness-75 scale-105'
-                              }`}
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                if (target.src.includes('drive.google.com/thumbnail')) {
-                                  const idMatch = target.src.match(/id=([a-zA-Z0-9_-]+)/);
-                                  if (idMatch) target.src = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+                          return (
+                            <div
+                              key={imgIdx}
+                              onClick={() => {
+                                if (!isRevealed) {
+                                  setUnblurredUrls((prev) => ({ ...prev, [url]: true }));
+                                } else {
+                                  setZoomedImageUrl(url);
                                 }
                               }}
-                            />
-
-                            {/* Corner Tag */}
-                            {imageUrls.length > 1 && (
-                              <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-sm text-cyan-300 border border-cyan-800/80 px-2 py-0.5 rounded-md text-[10px] font-black z-10">
-                                #{imgIdx + 1}
-                              </div>
-                            )}
-
-                            {/* Filter Overlay / Click to Unblur Badge */}
-                            {!isUnblurred ? (
-                              <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md flex flex-col items-center justify-center p-3 text-center group-hover:bg-slate-950/30 transition-colors">
-                                <div className="bg-cyan-600/90 text-white px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xl border border-cyan-400 group-hover:scale-105 transition-transform">
-                                  <Eye className="w-3.5 h-3.5" /> Click to Reveal
+                              className={`relative group rounded-2xl overflow-hidden border-2 shadow-2xl bg-black min-h-[200px] sm:min-h-[240px] max-h-[44vh] flex items-center justify-center transition-all cursor-pointer select-none ${
+                                isRevealed
+                                  ? 'border-cyan-500/70 hover:border-yellow-400 hover:scale-[1.02]'
+                                  : revealStyle === 'hidden'
+                                  ? 'border-dashed border-slate-700 hover:border-cyan-400 bg-black'
+                                  : 'border-cyan-500/50 hover:border-cyan-400'
+                              }`}
+                            >
+                              {/* 1. Hidden (Pitch Black) Solid Cover */}
+                              {revealStyle === 'hidden' && !isRevealed ? (
+                                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2.5 bg-black w-full h-full">
+                                  <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 shadow-inner group-hover:scale-110 transition-transform">
+                                    <Eye className="w-6 h-6 animate-pulse text-cyan-300" />
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <div className="text-sm font-black text-slate-100 uppercase tracking-wider">
+                                      {imageUrls.length > 1 ? `Image Clue #${imgIdx + 1}` : 'Image Clue'}
+                                    </div>
+                                    <p className="text-[11px] font-semibold text-slate-500">
+                                      Hidden behind black cover
+                                    </p>
+                                  </div>
+                                  <div className="bg-cyan-600 group-hover:bg-cyan-500 text-white px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xl border border-cyan-400">
+                                    <Eye className="w-3.5 h-3.5" /> Click to Reveal
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="absolute bottom-2 right-2 bg-slate-950/80 backdrop-blur-sm text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                                <Maximize2 className="w-3.5 h-3.5 text-yellow-400" /> Zoom
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                              ) : (
+                                /* 2. Blurry or Open Revealed Image */
+                                <>
+                                  <img
+                                    src={url}
+                                    alt={`Clue #${imgIdx + 1}`}
+                                    referrerPolicy="no-referrer"
+                                    className={`max-h-[44vh] w-auto max-w-full object-contain rounded-2xl transition-all duration-700 ease-out ${
+                                      isRevealed
+                                        ? 'filter-none scale-100'
+                                        : 'filter blur-2xl brightness-75 scale-105'
+                                    }`}
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      if (target.src.includes('drive.google.com/thumbnail')) {
+                                        const idMatch = target.src.match(/id=([a-zA-Z0-9_-]+)/);
+                                        if (idMatch) target.src = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+                                      }
+                                    }}
+                                  />
+
+                                  {/* Corner Tag */}
+                                  {imageUrls.length > 1 && (
+                                    <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-sm text-cyan-300 border border-cyan-800/80 px-2 py-0.5 rounded-md text-[10px] font-black z-10">
+                                      #{imgIdx + 1}
+                                    </div>
+                                  )}
+
+                                  {/* Frosted Filter Overlay for Blurry Mode */}
+                                  {revealStyle === 'blurry' && !isRevealed && (
+                                    <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md flex flex-col items-center justify-center p-3 text-center group-hover:bg-slate-950/30 transition-colors">
+                                      <div className="bg-cyan-600/90 text-white px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xl border border-cyan-400 group-hover:scale-105 transition-transform">
+                                        <Eye className="w-3.5 h-3.5" /> Click to Reveal
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Zoom Tooltip on Hover when Revealed */}
+                                  {isRevealed && (
+                                    <div className="absolute bottom-2 right-2 bg-slate-950/80 backdrop-blur-sm text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                      <Maximize2 className="w-3.5 h-3.5 text-yellow-400" /> Zoom
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                 </div>
               )}
 

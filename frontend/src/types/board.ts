@@ -1,5 +1,6 @@
 export type QuestionType = 'standard' | 'media' | 'image';
 export type ImageDisplayMode = 'gallery' | 'progressive';
+export type ImageRevealStyle = 'blurry' | 'hidden' | 'open';
 
 export interface QuestionData {
   value: number;
@@ -8,6 +9,8 @@ export interface QuestionData {
   isDailyDouble: boolean;
   questionType?: QuestionType;
   imageDisplayMode?: ImageDisplayMode;
+  imageRevealStyle?: ImageRevealStyle;
+  imageRevealStyles?: ImageRevealStyle[];
   mediaUrl?: string;
   mediaUrls?: string[];
   isAudioOnly?: boolean;
